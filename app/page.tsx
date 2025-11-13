@@ -166,9 +166,9 @@ function drawCoverImage(
 /* ========= NEW: Resize ảnh trước khi upload ========= */
 async function resizeImage(
   file: File,
-  maxWidth = 1500,
-  maxHeight = 1500,
-  quality = 0.9
+  maxWidth = 800,      // ↓ từ 1500
+  maxHeight = 800,     // ↓ từ 1500
+  quality = 0.7        // ↓ từ 0.9
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -178,35 +178,20 @@ async function resizeImage(
       img.onload = () => {
         let { width, height } = img;
 
-        // nếu ảnh nhỏ sẵn thì giữ nguyên
-        if (width <= maxWidth && height <= maxHeight) {
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("Canvas not supported"));
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) return reject(new Error("Resize failed"));
-              resolve(blob);
-            },
-            "image/jpeg",
-            quality
-          );
-          return;
-        }
+        // nếu ảnh nhỏ sẵn thì vẫn convert sang JPEG cho chắc
+        const canvas = document.createElement("canvas");
 
         const ratio = width / height;
-        if (width / maxWidth > height / maxHeight) {
-          width = maxWidth;
-          height = Math.round(maxWidth / ratio);
-        } else {
-          height = maxHeight;
-          width = Math.round(maxHeight * ratio);
+        if (width > maxWidth || height > maxHeight) {
+          if (width / maxWidth > height / maxHeight) {
+            width = maxWidth;
+            height = Math.round(maxWidth / ratio);
+          } else {
+            height = maxHeight;
+            width = Math.round(maxHeight * ratio);
+          }
         }
 
-        const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
@@ -223,14 +208,15 @@ async function resizeImage(
         );
       };
 
-      img.onerror = (err) => reject(err);
+      img.onerror = (err) => reject(err as any);
       img.src = reader.result as string;
     };
 
-    reader.onerror = (err) => reject(err);
+    reader.onerror = (err) => reject(err as any);
     reader.readAsDataURL(file);
   });
 }
+
 
 /* ========= Component ========= */
 export default function Page() {
