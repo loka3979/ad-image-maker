@@ -163,6 +163,75 @@ function drawCoverImage(
   ctx.drawImage(img, sx, sy, drawW, drawH);
 }
 
+/* ========= NEW: Resize ảnh trước khi upload ========= */
+async function resizeImage(
+  file: File,
+  maxWidth = 1500,
+  maxHeight = 1500,
+  quality = 0.9
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      img.onload = () => {
+        let { width, height } = img;
+
+        // nếu ảnh nhỏ sẵn thì giữ nguyên
+        if (width <= maxWidth && height <= maxHeight) {
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Canvas not supported"));
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return reject(new Error("Resize failed"));
+              resolve(blob);
+            },
+            "image/jpeg",
+            quality
+          );
+          return;
+        }
+
+        const ratio = width / height;
+        if (width / maxWidth > height / maxHeight) {
+          width = maxWidth;
+          height = Math.round(maxWidth / ratio);
+        } else {
+          height = maxHeight;
+          width = Math.round(maxHeight * ratio);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return reject(new Error("Resize failed"));
+            resolve(blob);
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      img.onerror = (err) => reject(err);
+      img.src = reader.result as string;
+    };
+
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 /* ========= Component ========= */
 export default function Page() {
   // 1) Portrait (remove.bg)
@@ -287,19 +356,30 @@ export default function Page() {
     setter(URL.createObjectURL(file));
   }
 
+  // ✅ Resize ảnh trước khi gửi qua /api/removebg
   async function onPickPortraitRemoveBG(file?: File) {
     if (!file || !file.type.startsWith("image/")) return;
     setPortraitErr(null);
     setPortraitLoading(true);
+
     try {
+      // 1. Resize client-side để tránh payload quá lớn
+      const resizedBlob = await resizeImage(file, 1500, 1500, 0.9);
+      const uploadFile = new File(
+        [resizedBlob],
+        file.name || "portrait.jpg",
+        { type: resizedBlob.type || "image/jpeg" }
+      );
+
       const fd = new FormData();
-      fd.append("image", file, file.name || "portrait.jpg");
+      fd.append("image", uploadFile, uploadFile.name);
 
       const res = await fetch("/api/removebg", { method: "POST", body: fd });
 
       if (!res.ok) {
-        const blobUrl = URL.createObjectURL(file);
-        setPortrait(blobUrl);
+        // nếu removebg lỗi → vẫn dùng ảnh đã resize
+        const fallbackUrl = URL.createObjectURL(resizedBlob);
+        setPortrait(fallbackUrl);
         const text = await res.text();
         setPortraitErr(text || `HTTP ${res.status}`);
         return;
@@ -309,8 +389,15 @@ export default function Page() {
       const url = URL.createObjectURL(pngBlob);
       setPortrait(url);
     } catch (err: any) {
-      const blobUrl = URL.createObjectURL(file);
-      setPortrait(blobUrl);
+      // nếu có lỗi lạ → dùng ảnh resize để hiển thị
+      try {
+        const resizedBlob = await resizeImage(file, 1500, 1500, 0.9);
+        const fallbackUrl = URL.createObjectURL(resizedBlob);
+        setPortrait(fallbackUrl);
+      } catch {
+        const blobUrl = URL.createObjectURL(file);
+        setPortrait(blobUrl);
+      }
       setPortraitErr(err?.message || "RemoveBG failed - hiển thị tạm ảnh gốc");
     } finally {
       setPortraitLoading(false);
