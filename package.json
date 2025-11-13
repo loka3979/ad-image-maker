@@ -22,3 +22,11 @@
     "typescript": "^5.3.3"
   }
 }
+"devDependencies": {
+  "tailwindcss": "^3.4.14",
+  "postcss": "^8.4.47",
+  "autoprefixer": "^10.4.20",
+  "@types/react": "19.2.2",
+  "@types/node": "^22.10.2",
+  "typescript": "^5.3.3"
+}
